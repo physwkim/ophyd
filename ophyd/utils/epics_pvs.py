@@ -202,7 +202,7 @@ def raise_if_disconnected(fcn):
 
 
 def set_and_wait(signal, val, poll_time=0.01, timeout=10, rtol=None,
-                 atol=None):
+                 atol=None, transition=False):
     """Set a signal to a value and wait until it reads correctly.
 
     For floating point values, it is strongly recommended to set a tolerance.
@@ -221,12 +221,18 @@ def set_and_wait(signal, val, poll_time=0.01, timeout=10, rtol=None,
         allowed relative tolerance between the readback and setpoint values
     atol : float, optional
         allowed absolute tolerance between the readback and setpoint values
+    transition : bool, optional
+        indicate whether it is a transition type signal
 
     Raises
     ------
     TimeoutError if timeout is exceeded
     """
-    signal.put(val)
+    if transition:
+        signal.put(val, use_complete=True)
+    else:
+        signal.put(val)
+
     expiration_time = ttime.time() + timeout if timeout is not None else None
     current_value = signal.get()
 
@@ -255,6 +261,8 @@ def set_and_wait(signal, val, poll_time=0.01, timeout=10, rtol=None,
 
     while not _compare_maybe_enum(val, current_value, enum_strings, atol,
                                   rtol):
+        if transition and signal.put_finished:
+            break
         logger.debug("Waiting for %s to be set from %r to %r%s...",
                      signal.name, current_value, val, within_str)
         ttime.sleep(poll_time)

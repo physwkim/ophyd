@@ -251,7 +251,7 @@ class Signal(OphydObject):
         self._run_subs(sub_type=self.SUB_VALUE, old_value=old_value,
                        value=value, **md_for_callback)
 
-    def _set_and_wait(self, value, timeout):
+    def _set_and_wait(self, value, timeout, transition):
         '''
         Overridable hook for subclasses to override :meth:`.set` functionality.
 
@@ -264,9 +264,11 @@ class Signal(OphydObject):
             The value
         timeout : float, optional
             Maximum time to wait for value to be successfully set, or None
+        transition : bool, optional
+            Indicate whether it is a transition type signal
         '''
         return set_and_wait(self, value, timeout=timeout, atol=self.tolerance,
-                            rtol=self.rtolerance)
+                            rtol=self.rtolerance, transition=transition)
 
     def set(self, value, *, timeout=None, settle_time=None):
         '''Set is like `put`, but is here for bluesky compatibility
@@ -282,9 +284,11 @@ class Signal(OphydObject):
             value, timeout, settle_time
         )
 
+        transition = self.transition
+
         def set_thread():
             try:
-                self._set_and_wait(value, timeout)
+                self._set_and_wait(value, timeout, transition)
             except TimeoutError:
                 success = False
                 self.log.warning(
@@ -1395,6 +1399,8 @@ class EpicsSignal(EpicsSignalBase):
         configure class defaults.
 
         Explicitly passing None means, "Wait forever."
+    transition : bool, optional
+        Signal that returns to its original value after the operation is finished
     '''
     SUB_SETPOINT = 'setpoint'
     SUB_SETPOINT_META = 'setpoint_meta'
@@ -1415,13 +1421,14 @@ class EpicsSignal(EpicsSignalBase):
                       )
 
     def __init__(self, read_pv, write_pv=None, *, put_complete=False,
-                 string=False, limits=False, name=None,
+                 string=False, limits=False, name=None, transition=False,
                  **kwargs):
 
         self._write_pv = None
         self._use_limits = bool(limits)
         self._put_complete = put_complete
         self._setpoint = None
+        self._transition = bool(transition)
 
         metadata = dict(
             setpoint_timestamp=None,
@@ -1810,6 +1817,16 @@ class EpicsSignal(EpicsSignalBase):
     @put_complete.setter
     def put_complete(self, value):
         self._put_complete = bool(value)
+
+    @property
+    def put_finished(self):
+        '''Return the put completion status'''
+        return self._write_pv.put_complete
+
+    @property
+    def transition(self):
+        '''Report whether it is a transition type signal'''
+        return self._transition
 
     @property
     def use_limits(self):
